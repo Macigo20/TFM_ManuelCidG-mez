@@ -259,9 +259,7 @@ if session.is_finished and st.session_state.evaluation:
         st.metric(label="Puntuación Global de Cumplimiento", value=f"{report.overall_score} / 10")
 
         # Barra de progreso visual, coloreada según el rango de la nota:
-        # verde (≥8), amarillo (5-7), rojo (<5). Streamlit no permite
-        # elegir el color de st.progress directamente, así que se simula
-        # con un pequeño bloque HTML/CSS.
+        # verde (≥8), amarillo (5-7), rojo (<5)..
         score_pct = max(0, min(report.overall_score, 10)) / 10
         if report.overall_score >= 8:
             bar_color = "#2ecc71"  # verde
@@ -293,8 +291,6 @@ if session.is_finished and st.session_state.evaluation:
     c3.metric("Guía Canal Digital", "✅ Cumplido" if report.digital_channel_guidance else "❌ Omitido")
     c4.metric("Cierre Profesional", "✅ Cumplido" if report.closing_check else "❌ Omitido")
 
-    # Métricas de PLN: fidelidad del cliente simulado frente al diálogo real
-    # del escenario (ver src/utils/evaluation_metrics.py).
     if st.session_state.fidelidad:
         st.subheader("🧪 Métricas de PLN: Fidelidad del Roleplay")
         m1, m2 = st.columns(2)
@@ -304,6 +300,10 @@ if session.is_finished and st.session_state.evaluation:
         m2.metric("Similitud semántica (embeddings)", f"{sem:.2f}" if sem is not None else "N/A")
         if sem_error:
             st.caption(f"⚠️ Similitud semántica no disponible: {sem_error}")
+    elif st.session_state.get("fidelidad_crash"):
+        st.warning("⚠️ No se pudieron calcular las métricas de PLN para esta conversación.")
+        with st.expander("Ver detalle técnico del error"):
+            st.code(st.session_state["fidelidad_crash"])
 
     st.divider()
 
