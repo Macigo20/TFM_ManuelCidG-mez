@@ -3,6 +3,7 @@ Métricas de PLN para evaluar la fidelidad del cliente simulado frente a la
 transcripción de referencia (ground truth) del corpus original.
  
 """
+
 import re
 from typing import List, Optional
  
@@ -28,19 +29,28 @@ def lexical_overlap_score(text_a: str, text_b: str) -> float:
 def semantic_similarity(
     text_a: str,
     text_b: str,
-    model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+    model_name: str = "models/gemini-embedding-001",
 ) -> float:
     """Similitud coseno entre los embeddings semánticos de dos textos.
-    Devuelve un valor entre -1.0 y 1.0 (en la práctica, casi siempre 0-1)."""
-    from sentence_transformers import SentenceTransformer, util
+ 
+    Calculados mediante la API de Google Generative AI (la misma
+    GOOGLE_API_KEY que ya usa el modelo conversacional Gemini), en vez de
+    con un modelo local de sentence-transformers/torch. Esto evita
+    depender de la instalación local de PyTorch, que en algunos entornos
+    Windows puede bloquearse por políticas de seguridad (Smart App
+    Control) al cargar sus DLLs nativas. Devuelve un valor entre -1.0 y
+    1.0 (en la práctica, casi siempre 0-1).
+    """
+    from langchain_google_genai import GoogleGenerativeAIEmbeddings
+    import numpy as np
  
     if model_name not in _MODEL_CACHE:
-        _MODEL_CACHE[model_name] = SentenceTransformer(model_name)
-    model = _MODEL_CACHE[model_name]
+        _MODEL_CACHE[model_name] = GoogleGenerativeAIEmbeddings(model=model_name)
+    embedder = _MODEL_CACHE[model_name]
  
-    embeddings = model.encode([text_a, text_b], convert_to_tensor=True)
-    score = util.cos_sim(embeddings[0], embeddings[1]).item()
-    return score
+    vector_a, vector_b = embedder.embed_documents([text_a, text_b])
+    a, b = np.array(vector_a), np.array(vector_b)
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
  
  
 def evaluate_roleplay_fidelity(
@@ -67,39 +77,10 @@ def evaluate_roleplay_fidelity(
         try:
             result["semantic_similarity"] = semantic_similarity(simulated_text, ground_truth_transcript)
         except Exception as e:
-            # No dejamos que un fallo aquí (p. ej. DLLs de torch bloqueadas
-            # por Smart App Control en Windows, o el modelo aún
-            # descargándose) rompa el resto de la app. Guardamos el motivo
-            # para poder mostrarlo en la interfaz en vez de fallar en
-            # silencio.
+            # No dejamos que un fallo aquí (p. ej. problemas de red, cuota
+            # de la API agotada, o clave GOOGLE_API_KEY no configurada)
+            # rompa el resto de la app. Guardamos el motivo para poder
+            # mostrarlo en la interfaz en vez de fallar en silencio.
             result["semantic_similarity_error"] = f"{type(e).__name__}: {e}"
- 
-    return result
- 
- 
-def evaluate_roleplay_fidelity(
-    simulated_turns: List[str],
-    ground_truth_transcript: str,
-    use_semantic: bool = True,
-) -> dict:
-    """Evalúa la fidelidad de una sesión de roleplay comparando las
-    intervenciones del cliente simulado contra el ground_truth_transcript
-    original de ese escenario.
- 
-    `simulated_turns`: lista de textos generados por ClientSimulator durante
-    la sesión (turno a turno).
-    """
-    simulated_text = " ".join(simulated_turns)
- 
-    result = {
-        "lexical_overlap": lexical_overlap_score(simulated_text, ground_truth_transcript),
-        "semantic_similarity": None,
-    }
- 
-    if use_semantic:
-        try:
-            result["semantic_similarity"] = semantic_similarity(simulated_text, ground_truth_transcript)
-        except ImportError:
-            result["semantic_similarity"] = None  # sentence-transformers no instalado
  
     return result
